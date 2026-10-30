@@ -162,7 +162,9 @@ class _NumericUnpickler(pickle._Unpickler):
             if type(alignment) is not int or not 1 <= alignment <= 256:
                 raise GrailFormatError("Invalid joblib array alignment")
             padding = self.read(1)
-            if len(padding) != 1 or padding[0] >= alignment:
+            # joblib writes alignment - ((position + 1) % alignment), so an
+            # already aligned payload has a full alignment block of padding.
+            if len(padding) != 1 or padding[0] > alignment:
                 raise GrailFormatError("Invalid joblib array padding")
             if len(self.read(padding[0])) != padding[0]:
                 raise GrailFormatError("Truncated joblib array padding")

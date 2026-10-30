@@ -11,12 +11,13 @@ import numpy as np
 from hoi_pipeline.adapters.grail import G1_JOINT_NAMES, GrailFormatError, _load_numeric, list_clips, load_clip
 
 
-def numeric_joblib_fixture(array):
+def numeric_joblib_fixture(array, *, prefix_bytes=0, padding_override=None):
     """Minimal author-format numeric wrapper + aligned raw Fortran payload."""
     def word(text):
         encoded = text.encode("utf-8")
         return pickle.SHORT_BINUNICODE + bytes([len(encoded)]) + encoded
     payload = pickle.PROTO + b"\x04"
+    payload += word("x" * prefix_bytes) + pickle.POP
     payload += word("joblib.numpy_pickle") + word("NumpyArrayWrapper") + pickle.STACK_GLOBAL
     payload += pickle.EMPTY_TUPLE + pickle.NEWOBJ + pickle.EMPTY_DICT + pickle.MARK
     payload += word("subclass") + word("numpy") + word("ndarray") + pickle.STACK_GLOBAL
@@ -26,7 +27,9 @@ def numeric_joblib_fixture(array):
     payload += word("allow_mmap") + pickle.NEWTRUE
     payload += word("numpy_array_alignment_bytes") + pickle.BININT1 + bytes([16])
     payload += pickle.SETITEMS + pickle.BUILD
-    padding = (16 - (len(payload) + 1) % 16) % 16
+    padding = 16 - (len(payload) + 1) % 16
+    if padding_override is not None:
+        padding = padding_override
     return payload + bytes([padding]) + b"\xff" * padding + array.astype("<f4").tobytes(order="F") + pickle.STOP
 
 
@@ -177,6 +180,35 @@ class GrailAdapterTests(unittest.TestCase):
         target.write_bytes(raw[:-4])
         with self.assertRaises(GrailFormatError):
             _load_numeric(target)
+
+    def test_joblib_all_alignment_offsets_include_full_block(self):
+        array = np.arange(6, dtype=np.float32).reshape(2, 3)
+        target = self.root / "aligned.pkl"
+        observed = set()
+        for prefix_bytes in range(16):
+            raw = numeric_joblib_fixture(array, prefix_bytes=prefix_bytes)
+            padding_offset = raw.rindex(pickle.SETITEMS + pickle.BUILD) + 2
+            observed.add(raw[padding_offset])
+            for compressed in (False, True):
+                with self.subTest(prefix_bytes=prefix_bytes, compressed=compressed):
+                    target.write_bytes(zlib.compress(raw) if compressed else raw)
+                    value, _ = _load_numeric(target)
+                    np.testing.assert_array_equal(value, array)
+        self.assertEqual(observed, set(range(1, 17)))
+
+    def test_joblib_oversized_and_truncated_padding_rejected(self):
+        array = np.arange(6, dtype=np.float32).reshape(2, 3)
+        target = self.root / "bad_padding.pkl"
+        target.write_bytes(numeric_joblib_fixture(array, padding_override=17))
+        with self.assertRaisesRegex(GrailFormatError, "Invalid joblib array padding"):
+            _load_numeric(target)
+        raw = numeric_joblib_fixture(array, padding_override=16)
+        offset = raw.rindex(pickle.SETITEMS + pickle.BUILD) + 2
+        for cut in (offset, offset + 1, offset + 16):
+            with self.subTest(cut=cut):
+                target.write_bytes(raw[:cut])
+                with self.assertRaisesRegex(GrailFormatError, "joblib array padding"):
+                    _load_numeric(target)
 
     def test_ambiguous_quaternion_requires_explicit_verified_order(self):
         robot, _, _ = fixtures(self.root)

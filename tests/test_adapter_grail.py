@@ -52,7 +52,7 @@ def fixtures(root, *, order="xyzw", protocol=4, compressed=False):
         "contact_points_left_hand": {2: np.array([[0.1, 0.2, 0.3]], dtype=np.float32)},
         "contact_points_right_hand": {2: np.empty((0, 3), dtype=np.float32)},
     }}
-    meta = {"object_name": "object", "scene_scale": 1.25, "smpl_height": 1.66}
+    meta = {"object_name": "object", "scene_scale": 1.0, "smpl_height": 1.66}
     for folder, data in (("robot", robot), ("objects", objects), ("meta", meta)):
         raw = pickle.dumps(data, protocol=protocol)
         (root / folder / "sitting__chair__000.pkl").write_bytes(zlib.compress(raw) if compressed else raw)
@@ -105,14 +105,39 @@ class GrailAdapterTests(unittest.TestCase):
         with self.assertRaisesRegex(GrailFormatError, "not uniquely verified"):
             self.load()
 
-    def test_scale_is_spawn_scale_not_historical_object_scale(self):
+    def test_released_usd_uses_source_object_scale_once(self):
         fixtures(self.root)
         clip = self.load()
-        self.assertEqual(clip["object_asset"]["scale"], [1.25] * 3)
+        np.testing.assert_allclose(clip["object_asset"]["scale"], [0.8] * 3)
         np.testing.assert_allclose(clip["object_asset"]["source_object_scale"], [0.8] * 3)
-        self.assertFalse(clip["object_asset"]["source_object_scale_applied"])
+        self.assertTrue(clip["object_asset"]["source_object_scale_applied"])
+        self.assertEqual(clip["object_asset"]["scale_source"], "objects.scale")
+        self.assertEqual(clip["object_asset"]["source_meta_scene_scale"], 1.0)
+        self.assertFalse(clip["object_asset"]["meta_scene_scale_applied"])
         self.assertFalse(clip["object_asset"]["geometry_verified"])
         self.assertTrue(clip["object_asset"]["requires_usd_composition"])
+
+    def test_scalar_and_nonuniform_object_scale_are_preserved(self):
+        for value, expected in ((0.7, [0.7] * 3), ([0.7, 0.8, 0.9], [0.7, 0.8, 0.9])):
+            with self.subTest(value=value):
+                _, objects, _ = fixtures(self.root)
+                objects["generation_original_key"]["scale"] = value
+                self.rewrite("objects", objects)
+                np.testing.assert_array_equal(self.load()["object_asset"]["scale"], expected)
+
+    def test_invalid_scale_and_unaudited_scene_scale_fail_closed(self):
+        for value in (0, -1, [1, 2], [1, np.nan, 1], [1, np.inf, 1], ["x"]):
+            with self.subTest(value=value):
+                _, objects, _ = fixtures(self.root)
+                objects["generation_original_key"]["scale"] = value
+                self.rewrite("objects", objects)
+                with self.assertRaisesRegex(GrailFormatError, "Invalid source object scale"):
+                    self.load()
+        _, _, meta = fixtures(self.root)
+        meta["scene_scale"] = 1.25
+        self.rewrite("meta", meta)
+        with self.assertRaisesRegex(GrailFormatError, "explicit released-USD composition audit"):
+            self.load()
 
     def test_source_hand_points_remain_annotations(self):
         fixtures(self.root)

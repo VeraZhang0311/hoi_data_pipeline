@@ -5,6 +5,8 @@ exporter stores XYZW.  We resolve that version difference by checking pose_aa's
 independent root axis-angle, never by guessing from quaternion magnitudes.
 Object quaternions are WXYZ in both writers.  Hand points remain source-derived
 annotations, not forces and not revalidated robot contacts.
+Released USDs retain source dimensions: the author's replay code applies
+objects.pkl's static scale once, after composing mesh-to-rigid-root transforms.
 """
 from __future__ import annotations
 
@@ -24,6 +26,8 @@ CONVENTION_SOURCES = {
     "retarget": UPSTREAM_BASE + "grail/retargeting/retarget.py#L769-L850",
     "rollout_export": UPSTREAM_BASE + "grail/data_export/export_successful_rollouts.py#L262-L391",
     "object_spawn": UPSTREAM_BASE + "imports/SONIC/gear_sonic/envs/manager_env/modular_tracking_env_cfg.py#L556-L1001",
+    "released_usd_scale": UPSTREAM_BASE + "grail/visualization/prepare_vis_shard.py#L236-L251",
+    "released_usd_replay": UPSTREAM_BASE + "grail/visualization/batch_render_replay.py#L583-L638",
     "joint_order": UPSTREAM_BASE + "imports/SONIC/gear_sonic/envs/manager_env/robots/g1.py#L31-L126",
 }
 
@@ -325,11 +329,15 @@ def load_clip(robot_path, object_path=None, *, meta_path=None, object_asset_path
     meta, mr = ({}, None) if meta_path is None else _load_numeric(meta_path)
     if not isinstance(meta, dict):
         raise GrailFormatError("Metadata must be a dictionary")
-    # No implicit scene scaling: the author's spawn contract reads meta.scene_scale.
-    # An absent meta is tolerated for pose inspection but geometry readiness is false.
+    # The released-USD replay contract applies objects.scale, not the separate
+    # scene-level spawn branch. All audited sitting meta files have scene_scale=1.
+    # A nonunit scene scale needs a separate convention audit, not multiplication
+    # guessed from floor alignment or an unrelated training configuration.
     scene_scale = float(meta.get("scene_scale", 1.0))
     if not math.isfinite(scene_scale) or scene_scale <= 0:
         raise GrailFormatError("Invalid meta.scene_scale")
+    if scene_scale != 1.0:
+        raise GrailFormatError("Nonunit meta.scene_scale needs an explicit released-USD composition audit")
     asset = Path(object_asset_path).resolve(strict=True)
     if asset.suffix.lower() not in (".usd", ".usda", ".usdc") or not asset.is_file():
         raise GrailFormatError("Expected an existing USD object asset")
@@ -337,8 +345,10 @@ def load_clip(robot_path, object_path=None, *, meta_path=None, object_asset_path
     if not (asset_raw.startswith(b"PXR-USDC") or asset_raw.startswith(b"#usda")):
         raise GrailFormatError("Object asset is not a recognized USD layer")
     source_scale = np.asarray(objects.get("scale", np.ones(3))).reshape(-1)
-    if source_scale.shape not in ((1,), (3,)) or not np.isfinite(source_scale).all() or np.any(source_scale <= 0):
+    if (source_scale.dtype.kind not in "iuf" or source_scale.shape not in ((1,), (3,))
+            or not np.isfinite(source_scale).all() or np.any(source_scale <= 0)):
         raise GrailFormatError("Invalid source object scale")
+    applied_scale = np.repeat(source_scale, 3) if source_scale.size == 1 else source_scale
     supports = []
     if any(k in meta for k in ("table_pos", "table_quat", "table_size")):
         required = ("table_pos", "table_quat", "table_size")
@@ -357,14 +367,17 @@ def load_clip(robot_path, object_path=None, *, meta_path=None, object_asset_path
         "object_quat": _quat(_array(objects["root_quat"], (n, 1, 4), "object.root_quat")[:, 0], n, "object.root_quat"),
         "object_asset": {
             "path": str(asset), "sha256": hashlib.sha256(asset_raw).hexdigest(), "format": "usd",
-            "scale": [scene_scale] * 3, "source_object_scale": source_scale.tolist(),
-            "source_object_scale_applied": False, "scale_source": "meta.scene_scale" if mr else "author_default_1_missing_meta",
+            "scale": applied_scale.tolist(), "source_object_scale": source_scale.tolist(),
+            "source_object_scale_applied": True,
+            "scale_source": "objects.scale" if "scale" in objects else "author_replay_default_1_missing_object_scale",
+            "source_meta_scene_scale": scene_scale if mr else None,
+            "meta_scene_scale_applied": False,
             "geometry_frame": "rigid_root_local_meters_after_descendant_USD_composition",
             "transform_contract": "world = R(object_quat_wxyz) @ (diag(scale) @ USD_mesh_to_rigid_root_local_m) + object_pos",
-            "usd_transform_policy": "compose_mesh_to_rigid_root_descendant_xforms; replace_root_pose_and_scale_with_reference_pose_and_meta_scene_scale",
+            "usd_transform_policy": "compose_mesh_to_rigid_root_descendant_xforms; replace_root_pose_and_scale_with_reference_pose_and_objects_scale",
             "usd_root_policy": "default_prim_must_be_the_unique_rigid_body_root; otherwise_requires_explicit_audit",
             "requires_usd_composition": True, "geometry_verified": False,
-            "warning": "objects.pkl scale is provenance only; multiplying it again can double-scale the released USD.",
+            "warning": "Apply objects.scale once to source-size released USD geometry; do not additionally multiply meta.scene_scale or infer scale from floor contact.",
         },
         "scene_supports": supports, "source_contacts": _contacts(objects),
         "provenance": {

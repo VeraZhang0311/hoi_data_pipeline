@@ -6,7 +6,7 @@
 
 - ULTRA：冻结 train2651 与 canonical HOI80，源时间按既有 60 Hz 协议解释；不宣称重建了采集时钟。
 - HOI-Retarget / OMOMO：30 Hz G1；按关节名读取，保留同源 HOI80 隔离标记。流式读取 Parquet，不解码 video。
-- GRAIL sitting：发布 G1 轨迹；利用独立 `pose_aa` 验证根四元数顺序。物体 USD 相对刚体根提取，外层只应用 `meta.scene_scale`。
+- GRAIL sitting：发布 G1 轨迹；利用独立 `pose_aa` 验证根四元数顺序。物体 USD 相对刚体根提取，按照作者发布数据回放器应用 `objects.pkl` 的 motion-lib scale；非默认 scene_scale 需要独立证据。
 - OmniContact：90 Hz G1；验证发布版本后重排关节。已明确绑定的 carry 箱体按作者最终尺寸和重居中记录构造；其余有歧义资产保留 review，不猜变换。
 - HiPHI 本轮不纳入。
 
@@ -40,4 +40,3 @@ python -m hoi_pipeline.cli run --frozen /new/frozen --output /new/derived --sour
 输出组织为 `derived/<recipe>/<source>/<clip-hash>/`。`labels.npz` 无 pickle，`metadata.json` 含数组引用与来源，物体几何按 hash 复用。`training_ready` 固定 false：离线接触标注成功不代表 G1 已可物理执行；后续需 privileged tracking rollout 筛选。
 
 当前工程状态和集群回执保存在 ignored `receipts/`，不提交原 motion、资产、权重或结果。
-

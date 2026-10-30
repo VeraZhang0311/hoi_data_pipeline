@@ -7,7 +7,7 @@ name = "hoi-data-pipeline"
 version = "0.1.0"
 description = "Versioned geometric expected-contact labels for G1 HOI references"
 requires-python = ">=3.10"
-dependencies = ["numpy>=1.24", "scipy>=1.10", "trimesh>=4", "rtree>=1.2", "python-fcl>=0.7", "usd-core>=25", "pyarrow>=15"]
+dependencies = ["numpy>=1.24", "scipy>=1.10", "trimesh>=4", "rtree>=1.2", "python-fcl>=0.7", "usd-core==25.5.1", "pyarrow>=15"]
 
 [project.optional-dependencies]
 ultra = ["torch>=2.6"]
@@ -17,4 +17,3 @@ hoi-label = "hoi_pipeline.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["hoi_pipeline*"]
-

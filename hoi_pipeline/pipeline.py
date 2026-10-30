@@ -14,6 +14,10 @@ from .timebase import validate, resample, events, interval_evidence
 from .geometry import Shape, group_gap, classify
 
 def object_recipe(asset):
+    if asset.get("kind") == "author_collision":
+        if not asset.get("geometry_ready") or asset.get("binding_status") != "verified_author_training_asset":
+            raise ValueError("Unverified author collision geometry")
+        return asset["author_geometry"]
     if "recipe_entry" in asset:
         entry=asset["recipe_entry"];shapes=[]
         for mesh in entry["collision_meshes"]:
@@ -78,9 +82,10 @@ class Labeler:
         if "irregular_source_time_grid" in issues:
             raise ValueError("Source gaps require explicit interval segmentation; no labels interpolated across missing time")
         if tuple(clip["joint_names"])!=self.fk.names: raise ValueError("Joint order mismatch")
-        asset_key=identity(clip["object_asset"])
+        author_recipe=object_recipe(clip["object_asset"]) if clip["object_asset"].get("kind")=="author_collision" else None
+        asset_key=identity(author_recipe if author_recipe is not None else clip["object_asset"])
         if asset_key not in self.cache:
-            recipe=object_recipe(clip["object_asset"])
+            recipe=author_recipe if author_recipe is not None else object_recipe(clip["object_asset"])
             self.cache[asset_key]=(recipe,[Shape(s) for s in recipe["shapes"]])
             while len(self.cache)>8: self.cache.popitem(last=False)
         self.cache.move_to_end(asset_key)

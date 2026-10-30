@@ -112,6 +112,19 @@ class PipelineReviewTests(unittest.TestCase):
         _, metadata = self.labeler.label(_clip(flags=flags))
         self.assertTrue(set(flags).issubset(metadata["review_flags"]))
 
+    def test_author_geometry_cache_reuses_construction_but_not_admission(self):
+        clip = _clip()
+        clip["object_asset"] = {"kind": "author_collision", "geometry_ready": True,
+            "binding_status": "verified_author_training_asset",
+            "author_geometry": {"shapes": [{"kind": "cube", "size": [.1, .1, .1]}]}}
+        self.labeler.label(clip)
+        clip["object_asset"]["per_clip_metadata"] = "another clip with the same asset"
+        self.labeler.label(clip)
+        self.assertEqual(len(self.labeler.cache), 1)
+        clip["object_asset"]["geometry_ready"] = False
+        with self.assertRaisesRegex(ValueError, "Unverified author"):
+            self.labeler.label(clip)
+
     def test_failed_metadata_write_never_creates_success_marker(self):
         arrays, metadata = self.labeler.label(_clip())
         with tempfile.TemporaryDirectory() as directory:

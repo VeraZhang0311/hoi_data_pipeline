@@ -83,6 +83,14 @@ def freeze(config_path,output):
         elif source in ("omnicontact","grail_sitting"):
             for r in items:
                 if not r.get("_input_files"): raise ValueError(source+" override record lacks SHA-bound inputs")
+                if source == "omnicontact" and "author_geometry_binding" in r:
+                    from .adapters.omnicontact_assets import binding_files
+                    existing = {item["path"]: item for item in r["_input_files"]}
+                    for item in binding_files(r):
+                        if item["path"] in existing and existing[item["path"]]["sha256"] != item["sha256"]:
+                            raise ValueError("Conflicting author asset dependency identity")
+                        existing.setdefault(item["path"], item)
+                    r["_input_files"] = list(existing.values())
                 for item in r["_input_files"]:
                     if not item.get("path") or len(item.get("sha256",""))!=64: raise ValueError("Invalid frozen source identity")
     atomic_json(out/"inventory.json",inventory)

@@ -3,7 +3,8 @@
 World poses, frame count and the original time base are preserved. This module
 does not resample, cut, repair, or infer physical contacts. Carry-box geometry is
 resolved only through explicit author resize/center metadata and verified box
-topology; the other object bindings remain review items.
+topology. Other bindings require a separate explicit, SHA-bound author catalog;
+without it they remain review items.
 """
 from __future__ import annotations
 
@@ -353,6 +354,7 @@ def load_clip(path_or_record, *, source_root=None, manifest_path=None, expected_
     if expected != G1_JOINT_NAMES:
         raise OmniContactFormatError("Canonical joint names differ from verified SuperMimic SDK order")
     review = []
+    source_sha256 = _sha256(path)
     evidence = {}
     with np.load(path, allow_pickle=False) as data:
         if "joint_pos" not in data or data["joint_pos"].ndim != 2:
@@ -407,6 +409,9 @@ def load_clip(path_or_record, *, source_root=None, manifest_path=None, expected_
         else:
             review.append("missing_source_contact_info")
         asset = _object_asset(data, root, relative)
+        if "author_geometry_binding" in record:
+            from .omnicontact_assets import bind_asset
+            review.extend(bind_asset(asset, data, record, relative, source_sha256))
         supports = _supports(data, count)
     jumps = {}
     for label, positions, threshold in (("pelvis", root_pos, 0.5), ("object", obj_pos, 0.75)):
@@ -425,7 +430,7 @@ def load_clip(path_or_record, *, source_root=None, manifest_path=None, expected_
         "source_group_id", "capture_id", "split", "source_path", "source_start_frame",
         "source_end_frame_inclusive", "mapping_status", "source_group_verified", "task")}
     provenance.update(dataset="omnicontact", revision=REVISION, source_file=str(path), relative_path=relative,
-                      sha256=_sha256(path), root_body="pelvis", root_body_index=root_index,
+                      sha256=source_sha256, root_body="pelvis", root_body_index=root_index,
                       coordinate_frame="source_absolute_world", position_units="m", quaternion_order="WXYZ",
                       source_fps=fps, source_frames=count, timestamp_origin="clip_first_frame",
                       resampled=False, cut=False, repaired=False, layout_evidence=evidence,

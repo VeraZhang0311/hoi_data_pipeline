@@ -7,7 +7,7 @@
 - ULTRA：冻结 train2651 与 canonical HOI80，源时间按既有 60 Hz 协议解释；不宣称重建了采集时钟。
 - HOI-Retarget / OMOMO：30 Hz G1；按关节名读取，保留同源 HOI80 隔离标记。流式读取 Parquet，不解码 video。
 - GRAIL sitting：发布 G1 轨迹；利用独立 `pose_aa` 验证根四元数顺序。物体 USD 相对刚体根提取，按照作者发布数据回放器应用 `objects.pkl` 的 motion-lib scale；非默认 scene_scale 需要独立证据。
-- OmniContact：90 Hz G1；验证发布版本后重排关节。已明确绑定的 carry 箱体按作者最终尺寸和重居中记录构造；其余有歧义资产保留 review，不猜变换。
+- OmniContact：90 Hz G1；验证发布版本后重排关节。原 carry 箱体路径保留。新增显式 SHA 绑定的正式训练资产目录，可解锁 1,608 条 push / slide / soccer 片段；没有绑定的片段仍保留 review。
 - HiPHI 本轮不纳入。
 
 机器人绑定 v1.2 验收 bundle 中的 G1 USD、URDF 和依赖 SHA。使用已启用的碰撞表面，包括橡胶手、原五 hull 足部；禁止重新 cook 足部、启用旧脚球或以关节中心替代表面。导出时核对 USD 与 URDF 的身体坐标系。
@@ -40,3 +40,13 @@ python -m hoi_pipeline.cli run --frozen /new/frozen --output /new/derived --sour
 输出组织为 `derived/<recipe>/<source>/<clip-hash>/`。`labels.npz` 无 pickle，`metadata.json` 含数组引用与来源，物体几何按 hash 复用。`training_ready` 固定 false：离线接触标注成功不代表 G1 已可物理执行；后续需 privileged tracking rollout 筛选。
 
 当前工程状态和集群回执保存在 ignored `receipts/`，不提交原 motion、资产、权重或结果。
+
+## OmniContact 正式资产绑定
+
+`python -m hoi_pipeline.omnicontact_catalog --asset-root /audited/assets --author-code-root /pinned/training --output /new/catalog.json`
+
+目录构建重开正式 USD，并与独立 URDF 交叉验证，绑定审查文件、全部资产依赖及作者的文件名解析、物体生成、MotionCommand 源码 SHA。数据 revision 为 `068b83049df50653327b06ee41bbbaf1b9bd593e`，训练代码 revision 为 `19cde38364a5b48e47348b270c895eabe2ba3ad9`。每条 inventory 显式增加 `author_geometry_binding`，同时锁定 clip ID、原 NPZ SHA、资产名和目录 SHA；freeze 将依赖闭包纳入输入。
+
+55 种箱体使用真实 USD Cube 尺寸。`soccer_20` 和 `soccer_22` 的正式资产相同：约 21.6 cm、382 顶点的偏心网格，中心相对刚体根约 `[-0.00906, -0.01449, -0.00310] m`。保留原顶点和三角表面，验证闭合、绕序及凸性；不按名称生成球、不重新居中。其 USD 使用合并碰撞子树和 `convexHull`，这里不宣称重建 PhysX cooked 顶点缩减或 contact/rest offsets。
+
+作者 MotionCommand 直接使用记录的 object position / quaternion，spawner 的 scale 为 1。历史 scale、center offset、geom quaternion 不再次应用；源尺寸元数据若与正式资产不同，仍写入 review flags，不能据此自动修正轨迹。几何绑定成立不保证物理可执行、动作意图正确或数据 split 已确认。

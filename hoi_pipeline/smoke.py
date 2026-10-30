@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import sys
 import time
-from .cli import verify,load,check_files
+from .cli import verify,load,check_files,read
 from .adapters import omnicontact,hoi_retarget
 from .pipeline import Labeler,save_clip,atomic_json
 
@@ -13,8 +13,10 @@ def main():
     config,robot,manifest,inventory=verify(frozen)
     labeler=Labeler(robot,config["urdf_path"],hoi_retarget.G1_JOINT_NAMES,config["on_m"],config["off_m"],config["target_hz"])
     output=Path(output);output.mkdir(parents=True,exist_ok=False);results=[]
+    common=read(Path(frozen)/"common_inputs.json");checked={}
     for source in ("ultra","hoi_retarget","grail_sitting","omnicontact"):
         started=time.time()
+        check_files(common.get(source,[]),checked)
         if source=="omnicontact":
             paths=sorted(Path(omni_root).glob("npz_clips/box/case1_carry/*.npz"))
             if len(paths)!=1:raise ValueError("Smoke fixture must contain exactly one carry NPZ")

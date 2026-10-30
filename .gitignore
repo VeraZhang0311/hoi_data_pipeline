@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+data/
+outputs/
+receipts/
+*.npz
+*.pkl
+*.pt
+*.parquet
+*.usd
+*.usda
+*.tar.gz
+

@@ -50,3 +50,15 @@ python -m hoi_pipeline.cli run --frozen /new/frozen --output /new/derived --sour
 55 种箱体使用真实 USD Cube 尺寸。`soccer_20` 和 `soccer_22` 的正式资产相同：约 21.6 cm、382 顶点的偏心网格，中心相对刚体根约 `[-0.00906, -0.01449, -0.00310] m`。保留原顶点和三角表面，验证闭合、绕序及凸性；不按名称生成球、不重新居中。其 USD 使用合并碰撞子树和 `convexHull`，这里不宣称重建 PhysX cooked 顶点缩减或 contact/rest offsets。
 
 作者 MotionCommand 直接使用记录的 object position / quaternion，spawner 的 scale 为 1。历史 scale、center offset、geom quaternion 不再次应用；源尺寸元数据若与正式资产不同，仍写入 review flags，不能据此自动修正轨迹。几何绑定成立不保证物理可执行、动作意图正确或数据 split 已确认。
+
+### 2026-10-30 验收与补标
+
+生产代码冻结在 `5b3da10`。57 个真实资产均通过 USD / URDF / SHA 交叉验证；集群 CPU suite 为 73 passed、1 optional skipped。验收作业 `1482189` 已 COMPLETED / 0:0，9 条完整 reference 标注、保存及回读全部通过，其中包含两种足球别名、推/滑箱体、尺寸冲突片段及原 carry 回归。
+
+原批次已完成 623 条 carry，另有 1,608 条仅因几何绑定待审查。新批次逐条核对这 1,608 个 ID 和原 NPZ SHA：push 453、slide 190、足球 965，共约 7.75 小时；没有截断或改位姿。adapter 审查标记保留：82 条 grounding 尺寸冲突、1 条 object_size 冲突、5 条跳变候选、1 条分组未确认（后者与 object_size 冲突重叠，共 88 个 clip）。标注阶段的速度/几何诊断还可能新增标记。
+
+- 补标作业：`1482213`，32 shards、最多 8 个 CPU 作业并行；提交成功不代表全部完成。
+- 冻结 recipe：`378c47897b83440505e3915094eb32923f9968b4a37f19bb30a057b1e68e5eb6`。
+- 集群运行目录：`/mnt/projects/ll/tianzizh/hoi_data_pipeline_20261029_01/runs/omni_author_geometry_20261030_01`；含 `batch_frozen`、`VALIDATION_PASSED.json`、`BINDING_AUDIT.json`、`batch_submission.json` 和日志。
+- 独立输出：`/mnt/projects/ll/tianzizh/hoi_corpus/derived/g1_expected_contact_omni_author_geometry_20261030_01`。
+- 本地 ignored 回执：`receipts/omni_author_stage/`；原始作者资产及独立审查在 `receipts/omni_author_assets/`。实际进度以 Slurm、各 shard summary 和 `SUCCESS.json` 为准。
